@@ -8,12 +8,30 @@ start:
     ; step 1: enable A20 line
     call enable_a20
 
+    ;mov bx, 0x10000        ; Load the sector into memory at 0x10000 (16-bit mode can only address up to 1MB, so we use segment:offset to access memory above 64KB)
+    mov ax, 0x1000          ; Load the sector into memory at 0x10000 (segment:offset = 0x1000:0x0000)
+        mov es, ax          ; Set ES to 0x1000 so that the kernel is loaded at physical address 0x10000
+        xor bx, bx          ; offset 0x0000(es:bx = 0x1000:0x0000 = 0x10000)
+
+    ;load kernel from disk 
+    mov ah, 0x02            ; BIOS read sector function
+    mov al, 19            
+    mov ch, 0               ; Cylinder 0
+    mov cl, 10              ; Sector 10 (first sector is 1)              
+    mov dh, 0               
+    mov dl, 0x80            ; Drive 0 (first hard disk)
+   
+    int 0x13                ; Call BIOS disk interrupt
+    JC disk_error_S2        ; If carry flag is set, there was an error 
+
+    xor ax, ax              ; Clear AX to set ES back to 0 for future use
+    mov es, ax              ; restore ES to 0 for future use
+
     cli                     ; Clear interrupts before switching to protected mode
 
     ; step 2: load GDT
     lgdt [gdt_descriptor]     ; Load the GDT descriptor into GDTR
-    
-          
+     
 
     ; step 3: switch to protected mode
     mov eax, cr0            
@@ -22,6 +40,11 @@ start:
 
     ; step 4: far jump to flush the instruction pipeline and switch to protected mode
     jmp 0x08:protected_mode ; Jump to the protected mode code segment
+
+disk_error_S2:
+    mov si, msg_error_S2   
+    call print_string      
+    jmp $                  
 
 
 enable_a20:
@@ -201,10 +224,6 @@ print_string:
     ret                      ; Return from the function
 
 
-
-
-
-
 [BITS 64]
 
 long_mode_start:
@@ -216,12 +235,91 @@ long_mode_start:
     mov es, ax              
     mov fs, ax              
     mov gs, ax              
-    mov ss, ax              
-
+    mov ss, ax  
+    mov rsp, 0x200000         ; Set stack pointer to 0x200000  
 
     mov rsi, msg_longmode     
     call print_string_64
-    jmp $               
+
+    ;load the kernel from memory (it should have been loaded by stage 2 at 0x10000)
+    call load_elf
+
+    ;jmp to the kernel entry point 
+    jmp rax ;
+
+load_elf:
+    ; This is where you would parse the ELF header, load the program segments into memory,
+    ; and then return the entry point address in RAX
+
+    mov rsi, 0x10000         ; Address where the ELF file is loaded
+
+    ; verify ELF magic number
+    cmp dword [rsi], 0x464C457F ; "\x7FELF" in little-endian
+    jne elf_err
+
+    ; save the ELF header fields we need for loading the segments
+    mov rax, [rsi + 0x18] ; e_entry (entry point) - 0x18 is the offset of e_entry in the ELF header
+    push rax                ; Save the entry point address on the stack to return to later
+
+
+    ; read program header info
+    mov r8, [rsi + 0x20] ; e_phoff (program header offset) - 0x20 is the offset of e_phoff in the ELF header
+    movzx r9, word [rsi + 0x38] ; e_phnum (number of program headers) - 0x38 is the offset of e_phnum in the ELF header
+    movzx r10, word [rsi + 0x36] ; e_phentsize (size of each program header) - 0x36 is the offset of e_phentsize in the ELF header
+
+    ; rsi points to the start of the ELF file, we need to add e_phoff to get to the program headers
+    add r8, rsi             ; r8 now points to the first program header
+
+.next_segment:
+    ; Check if we've processed all program headers
+    test r9, r9           ; Check if e_phnum is zero
+    je .done_loading
+
+    ; check if this is a loadable segment (p_type == (1)PT_LOAD)
+    cmp dword [r8], 1        ; p_type is the first field in the program header
+    jne .skip_segment 
+
+    push r8                ; Save the pointer to the current program header on the stack for use in loading the segment
+    push rsi                ; Save rsi since we'll need it to point to the ELF file for loading the segment
+
+    ; Load the segment into memory
+    mov rdi, [r8 + 0x10] ; p_vaddr (virtual address to load the segment) - 0x10 is the offset of p_vaddr in the program header
+    mov rcx, [r8 + 0x20] ; p_filesz (size of the segment in the file) - 0x20 is the offset of p_filesz in the program header
+    mov rbx, [r8 + 0x08] ; p_offset (offset of the segment in the file) - 0x08 is the offset of p_offset in the program header
+    add rsi, rbx         ; rsi now points to the start of the segment data in the ELF file
+
+    ; Copy the segment data to its virtual address in memory
+    rep movsb            ; Copy rcx bytes from [rsi] to [rdi]
+
+    pop rsi                
+    pop r8              
+        ; If p_memsz > p_filesz, we need to zero out the remaining bytes in memory
+    
+    ; zero out the rest of the segment if p_memsz > p_filesz()
+    mov rdi, [r8 + 0x10] ; 
+    add rdi, [r8 + 0x20] ; rdi now points to the end of the loaded segment in memory
+    mov rcx, [r8 + 0x28] ; p_memsz (size of the segment in memory) - 0x28 is the offset of p_memsz in the program header
+    sub rcx, [r8 + 0x20] ; Calculate the number of bytes to zero out (p_memsz - p_filesz)
+    xor eax, eax         ; Zero out RAX to use for filling with zeros
+    rep stosb            ; Fill the remaining bytes with zeros(rcx bytes from eax to [rdi])
+
+.skip_segment:
+    add r8, r10           ; Move to the next program header (e_phentsize)
+    dec r9                ; Decrement the program header count
+    jmp .next_segment
+
+.done_loading:
+    ; After loading all segments, we can get the entry point address from the ELF header
+    pop rax                ; Get the entry point address from the ELF header (offset 0x18)
+    ret
+
+
+elf_err:
+    ; Handle ELF loading error (e.g., print an error message and halt)
+    mov rsi, msg_error_efl   
+    call print_string_64      
+    jmp $                   ; Infinite loop to halt the system 
+                  
 
 print_string_64:
     push rax
@@ -244,20 +342,22 @@ print_string_64:
     ret
     
 
-
-
-
-
-
-
-
 msg_stage2    db 'MyOS Stage 2 loading...', 0x0D, 0x0A, 0 ; Message to display (null-terminated)
 
 msg_protected db 'Welcome to MyOS Protected Mode!', 0 ; Message to display in protected mode (null-terminated)
 
 msg_longmode  db 'Welcome to MyOS Long Mode!', 0 ; Message to display in long mode (null-terminated)
 
+msg_error_S2   db 'Kernel loading failed!', 0x0D, 0x0A, 0 ; Error message for stage 2 (null-terminated)
+
+msg_error_efl  db 'ELF loading failed!', 0 ; Error message for ELF loading (null-terminated)
+
 ; Page tables at fixed addresses (must be 4KB aligned)
 p4_table equ 0x9000     ; PML4
 p3_table equ 0xA000     ; PDPT
 p2_table equ 0xB000     ; PD
+
+
+
+; Pad to exactly 4096 bytes so kernel starts at sector 3
+times 4096 - ($ - $$) db 0

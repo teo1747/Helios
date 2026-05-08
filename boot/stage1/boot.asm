@@ -19,7 +19,7 @@ start:
     
     ; load stage 2 from disk 
     mov ah, 0x02            ; BIOS read sector function
-    mov al, 1               ; read 1 sector
+    mov al, 8               ; read 8 sectors
     mov ch, 0               ; Cylinder 0
     mov cl, 2               ; Sector 2 (first sector is 1)
     mov dh, 0               ; Head 0
