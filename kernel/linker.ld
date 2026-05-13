@@ -19,4 +19,9 @@ SECTIONS {
     *(.bss)
     *(COMMON)
 }
+
+    /* Mark the end of the kernel in memory */
+    . = ALIGN(4096);
+    kernel_end = .;
+
 }

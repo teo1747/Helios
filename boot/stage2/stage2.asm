@@ -2,46 +2,75 @@
 [ORG 0x7E00]
 
 start:
-    mov si, msg_stage2       ; Load the address of the stage 2 message into SI
-    call print_string         ; Call the print_string function
+    
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
+    sti
 
-    call e820_query            ; Query the memory map using BIOS interrupt 0x15, function 0xE820
+    mov si, msg_stage2
+    call print_string
 
-    ;step 1: enable A20 line
+    call e820_query
     call enable_a20
 
-    ;mov bx, 0x10000        ; Load the sector into memory at 0x10000 (16-bit mode can only address up to 1MB, so we use segment:offset to access memory above 64KB)
-    mov ax, 0x1000          ; Load the sector into memory at 0x10000 (segment:offset = 0x1000:0x0000)
-        mov es, ax          ; Set ES to 0x1000 so that the kernel is loaded at physical address 0x10000
-        xor bx, bx          ; offset 0x0000(es:bx = 0x1000:0x0000 = 0x10000)
+    ; Load kernel: 9 sectors, one at a time, starting at LBA 9
+    
+    ; Load kernel: 90 sectors, one at a time, starting at LBA 9
+    mov word  [dap + 2], 1          ; 1 sector per read
+    mov word  [dap + 4], 0x0000     ; offset
+    mov word  [dap + 6], 0x1000     ; segment (= phys 0x10000)
+    mov dword [dap + 8], 9          ; initial LBA
+    mov dword [dap + 12], 0
 
-    ;load kernel from disk 
-    mov ah, 0x02            ; BIOS read sector function
-    mov al, 30           
-    mov ch, 0               ; Cylinder 0
-    mov cl, 10              ; Sector 10 (first sector is 1)              
-    mov dh, 0               
-    mov dl, 0x80            ; Drive 0 (first hard disk)
-   
-    int 0x13                ; Call BIOS disk interrupt
-    JC disk_error_S2        ; If carry flag is set, there was an error 
+    mov cx, 90
 
-    xor ax, ax              ; Clear AX to set ES back to 0 for future use
-    mov es, ax              ; restore ES to 0 for future use
+.read_loop:
+    mov si, dap
+    mov ah, 0x42
+    mov dl, 0x80
+    int 0x13
+    jc disk_error_S2
 
-    cli                     ; Clear interrupts before switching to protected mode
 
-    ; step 2: load GDT
-    lgdt [gdt_descriptor]     ; Load the GDT descriptor into GDTR
-     
+    add word  [dap + 6], 0x20
+    add dword [dap + 8], 1
+    adc dword [dap + 12], 0
 
-    ; step 3: switch to protected mode
-    mov eax, cr0            
-    or eax, 0x1              ; Set the PE bit (Protection Enable)
-    mov cr0, eax             
+    loop .read_loop
 
-    ; step 4: far jump to flush the instruction pipeline and switch to protected mode
-    jmp 0x08:protected_mode ; Jump to the protected mode code segment
+    xor ax, ax
+    mov es, ax
+
+    cli
+    lgdt [gdt_descriptor]
+
+    mov eax, cr0
+    or eax, 0x1
+    mov cr0, eax
+
+    jmp 0x08:protected_mode
+
+;Disk address packet for LBA read
+dap:
+    db 0x10                  ; Packet size (16 bytes)
+    db 0                     ; Reserved
+    dw 30                  ; number of sectors to read (60 for stage 2)
+    dw 0x0000                ; Starting head
+    dw 0x1000                ; Starting segment (loads to 0x10000)
+    dq 9                     ; Starting LBA (sector 10, 0-indexed = LDA 9)
+
+
+no_lba_support:
+    mov si, msg_no_lba
+    call print_string
+    jmp $
+
+lba_done:
+
 
 disk_error_S2:
     mov si, msg_error_S2   
@@ -419,6 +448,9 @@ msg_longmode  db 'Welcome to Helios Long Mode!', 0 ; Message to display in long 
 msg_error_S2   db 'Kernel loading failed!', 0x0D, 0x0A, 0 ; Error message for stage 2 (null-terminated)
 
 msg_error_efl  db 'ELF loading failed!', 0 ; Error message for ELF loading (null-terminated)
+
+msg_no_lba db 'BIOS does not support LBA!', 0x0D, 0x0A, 0
+
 
 ; Page tables at fixed addresses (must be 4KB aligned)
 p4_table equ 0x9000     ; PML4

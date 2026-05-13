@@ -15,6 +15,7 @@ ISR_SRC     = kernel/cpu/isr.asm
 KERNEL_SRC = kernel/main.c \
              kernel/cpu/isr.c \
              kernel/drivers/serial.c \
+			 kernel/mm/pmm.c \
              kernel/cpu/idt.c
 ISR_ASM     = kernel/cpu/isr.asm			 
 ISR_OBJ     = kernel/cpu/isr.o
@@ -48,6 +49,7 @@ $(KERNEL_ELF): $(KERNEL_SRC) $(ISR_OBJ) $(LINKER)
 # Combine into disk image
 $(IMG): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_ELF)
 	cat $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_ELF) > $(IMG)
+	truncate -s 1M $(IMG)
 
 # Run in QEMU
 run: $(IMG)

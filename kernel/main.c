@@ -1,6 +1,7 @@
 # include <stdint.h>
 #include "drivers/serial.h"
 #include "../kernel/cpu/idt.h"
+#include "mm/pmm.h"
 
 // VGA text mode buffer
 #define VGA_ADDR ((volatile uint16_t*) 0xB8000)
@@ -49,25 +50,44 @@ void kernel_main(void) {
     serial_init();  // Initialize serial communication
    
     vga_clear();  // Clear screen with white on black
-    vga_print("MyOS kernel\n", 0x0F);  // Print message in white on black
+    vga_print("Helios kernel\n", 0x0F);  // Print message in white on black
     vga_print("64-bit Long Mode\n", 0x0F); 
     vga_print("Kernel loaded successfully!\n", 0x0B);
 
-    serial_write_string("MyOS kernel initialized.\n");  // Print message via serial port
+    serial_write_string("Helios kernel initialized.\n");  // Print message via serial port
     serial_write_string("Serial output working!\n");
 
     idt_init();     // Initialize the Interrupt Descriptor Table (IDT)
     serial_write_string("IDT loaded\n");
 
-    // Trigger a test exception (divide by zero) to verify IDT and ISR handling
-    serial_write_string("Triggering divide by zero exception...\n");
-    int a = 10;
-    int b = 0;
-    int c = a + b; // This will cause a divide by zero exception
-    (void)c; // Suppress unused variable warning
+    pmm_init();
 
-    serial_write_string("this should never print\n");
+    serial_write_string("\n=== PMM Allocation Test ===\n");
+    void* page1 = pmm_alloc_page();
+    serial_write_string("Allocation page 1:  ");
+    serial_write_hex((uint64_t)page1);
+    serial_write_string("\n");
 
+    void* page2 = pmm_alloc_page();
+    serial_write_string("Allocation page 2:  ");
+    serial_write_hex((uint64_t)page2);
+    serial_write_string("\n");
+
+    void* page3 = pmm_alloc_page();
+    serial_write_string("Allocation page 3:  ");
+    serial_write_hex((uint64_t)page3);
+    serial_write_string("\n");
+
+    pmm_free_page(page2);
+    serial_write_string("Freed page 2\n");
+
+    void* page4 = pmm_alloc_page();
+    serial_write_string("Allocation page 4 (should reuse page 2):  ");
+    serial_write_hex((uint64_t)page4);
+    serial_write_string("\n");
+
+    pmm_print_stats();
+    
     for(;;) {
         // Infinite loop to keep the kernel running
     }
