@@ -4,6 +4,7 @@ ASM_FLAGS = -f bin
 CC = x86_64-elf-gcc
 CFLAGS = -ffreestanding -nostdlib -nostartfiles \
          -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
+         -mcmodel=kernel \
          -g -O0
 
 # Output

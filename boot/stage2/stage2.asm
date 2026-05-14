@@ -244,17 +244,30 @@ setup_page_tables:
     or eax, 0x03            ; Present and Read/Write
     mov [p3_table], eax     ; Set PDPT[0] to point to the PD
 
-    ;PD[0] -> 2MB page (maps 512 x 2MB = 1GB)
+    ;===Higher-half mapping===
+    ;PD[511] -> p4_table_higher (this is 0XFFFFFFFF80000000) PML4
+    mov eax, p3_table_higher
+    or eax, 0x03            ; Present and Read/Write
+    mov [p4_table + 511*8], eax; Set P[511] to point to the PDPT_higher
+
+    ;PDPT_higher[510] -> p2_table (same PD as identity map - shares the mapping)
+    mov eax, p2_table
+    or eax, 0x03            ; Present and Read/Write
+    mov [p3_table_higher + 510 * 8], eax 
+
+    ;=== PD: map 512 * 2MB = 1GB using huge pages ===
     mov ecx, 0
 .map_p2:
-    mov eax, 0x200000 ; 2MB 
-    mul ecx              ; eax = 2MB * ecx  calculates the physical address for the page
-    or eax, 0b10000011        ; Present, Read/Write, huge (ps bit) 
-    mov [p2_table + ecx*8], eax ; Set PD[ecx] to point to the 2MB page
-    inc ecx
-    cmp ecx, 512            ; We need to map 512 entries to cover 1GB
-    jl .map_p2
-    ret
+    mov eax, 0x200000 ; 2MB page
+    mul ecx              ; page index
+    or eax, 0b10000011  ; Present, Read/Write, User/Supervisor, Page Size = 2MB
+    mov [p2_table + ecx * 8], eax ; Set the page table entry for this page
+    inc ecx              ; Increment the page index
+    cmp ecx, 512         ; Check if we have mapped all 512 pages
+    jl .map_p2          ; If not, map the next page
+    ret                  ; Return from the function
+
+
 
     ; After setting up the page tables, you would enable paging by setting the PG bit in CR0
 
@@ -284,7 +297,7 @@ enable_paging:
 
 zero_page_tables:
     mov edi, 0x9000         ; start of p4_table
-    mov ecx, 3 * 4096 / 4  ; 3 tables × 4KB / 4 bytes each
+    mov ecx, 4 * 4096 / 4   ; 4 tables × 4KB / 4 bytes each
     xor eax, eax
     rep stosd               ; fill with zeros
     ret
@@ -333,7 +346,9 @@ long_mode_start:
     mov fs, ax              
     mov gs, ax              
     mov ss, ax  
-    mov rsp, 0x200000         ; Set stack pointer to 0x200000  
+
+    ; Use higher half vitual address space for stack
+    mov rsp, 0xFFFFFFFF80200000         ; Set stack pointer to 0x200000  
 
     mov rsi, msg_longmode     
     call print_string_64
@@ -453,9 +468,10 @@ msg_no_lba db 'BIOS does not support LBA!', 0x0D, 0x0A, 0
 
 
 ; Page tables at fixed addresses (must be 4KB aligned)
-p4_table equ 0x9000     ; PML4
-p3_table equ 0xA000     ; PDPT
-p2_table equ 0xB000     ; PD
+p4_table equ 0x9000          ; PML4
+p3_table equ 0xA000          ; PDPT for lower half
+p2_table equ 0xB000          ; PD shared by both maps
+p3_table_higher equ 0xc000   ; PDPT for higher half
 
 
 

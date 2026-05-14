@@ -28,6 +28,12 @@
 - [ ] Linear scan for free page is O(n) - slow with lots of allocations
   - Future: free list or buddy allocator
 
+### Memory Layout
+- [ ] Stack and PMM heap could collide if stack grows >1MB
+  - Move stack to its own dedicated region (e.g., 0x90000 area)
+  - Or allocate stack via PMM after init
+  - Mark proper guard pages around stack
+
 ## Architecture
 
 - [ ] Single CPU only - SMP support not implemented
