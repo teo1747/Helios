@@ -19,7 +19,8 @@ KERNEL_SRC = kernel/main.c \
              kernel/drivers/serial.c \
 			 kernel/mm/pmm.c \
              kernel/cpu/idt.c \
-			 kernel/mm/vmm.c
+			 kernel/mm/vmm.c \
+			 kernel/kprintf.c
 ISR_ASM     = kernel/cpu/isr.asm			 
 ISR_OBJ     = kernel/cpu/isr.o
 

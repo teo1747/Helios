@@ -3,6 +3,7 @@
 #include "../kernel/cpu/idt.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
+#include "include/kprintf.h"
 
 // VGA text mode buffer
 #define VGA_ADDR ((volatile uint16_t*) 0xB8000)
@@ -59,34 +60,20 @@ void kernel_main(void) {
 
     pmm_init();
     vmm_init();
-   // Test: allocate a new page and map it to a fresh virtual address
-    serial_write_string("\n=== VMM Test ===\n");
-    
-    uint64_t phys = pmm_alloc_page();
-    uint64_t virt = 0xFFFFFFFF90000000;  // somewhere new in higher half
-    
-    serial_write_string("Allocated phys: ");
-    serial_write_hex(phys);
-    serial_write_string("\nMapping to virt: ");
-    serial_write_hex(virt);
-    serial_write_string("\n");
-    
-    vmm_map(virt, phys, VMM_WRITABLE);
-    
-    // Write to it
-    uint64_t *ptr = (uint64_t *)virt;
-    *ptr = 0xCAFEBABEDEADBEEF;
-    
-    serial_write_string("Wrote magic value\n");
-    serial_write_string("Read back: ");
-    serial_write_hex(*ptr);
-    serial_write_string("\n");
-    
-    // Verify translation
-    uint64_t actual_phys = vmm_get_phys(virt);
-    serial_write_string("vmm_get_phys returned: ");
-    serial_write_hex(actual_phys);
-    serial_write_string("\n");
+   // Test:
+    kprintf("\n=== kprintf Test ===\n");
+    kprintf("Signed:    %d\n", -42);
+    kprintf("Unsigned:  %u\n", 100);
+    kprintf("Hex:       %x\n", 0xCAFE);
+    kprintf("HEX:       %X\n", 0xDEADBEEF);
+    kprintf("Pointer:   %p\n", &kernel_main);
+    kprintf("String:    %s\n", "hello world");
+    kprintf("Char:      %c\n", 'A');
+    kprintf("Long hex:  %lx\n", (uint64_t)0xCAFEBABEDEADBEEF);
+    kprintf("Padded:    %08x\n", 0xABCD);
+    kprintf("Percent:   %%\n");
+
+    kprintf("\nVMM PML4 at phys: %p\n", (void *)vmm_get_kernel_pml4());
 
     for(;;);
 }

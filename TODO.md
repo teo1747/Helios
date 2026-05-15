@@ -3,7 +3,6 @@
 ## Bootloader
 
 ### Stage 1
-- [ ] Currently uses CHS for loading Stage 2 - should switch to LBA for consistency
 - [ ] Hardcoded sector count (8 sectors) for Stage 2 - should be dynamic
 
 ### Stage 2
@@ -34,8 +33,35 @@
   - Or allocate stack via PMM after init
   - Mark proper guard pages around stack
 
+### VMM - Direct Map Limitation
+- [ ] Currently maps only first 1GB of physical RAM to higher half
+  - Works fine on QEMU (128 MB)
+  - WILL FAIL on real hardware with >1GB RAM
+  - Allocations beyond 1GB return unreachable physical addresses
+- [ ] Solution: read total RAM from E820, map all physical RAM
+  - Use 2MB pages for direct map region (less overhead than 4KB)
+  - Reserve dedicated virtual range (e.g., 0xFFFF800000000000+)
+- [ ] After full direct map: also implement vmalloc-style dynamic mapping
+- [ ] Note: storage (HDD/SSD) is NOT a VMM concern - handled by drivers
+
 ## Architecture
 
 - [ ] Single CPU only - SMP support not implemented
 - [ ] No APIC setup - still using legacy PIC (when we add interrupts)
 - [ ] No ACPI parsing yet
+
+### Console / Display
+- [ ] Build a proper console abstraction layer (console.h/c)
+  - kprintf writes to console, not serial directly
+  - Console routes to multiple backends (serial + screen)
+- [ ] Get framebuffer access during boot
+  - Option A: VBE/VESA via Stage 2 BIOS calls (BIOS)
+  - Option B: UEFI GOP (modern, requires UEFI bootloader)
+- [ ] Build text rendering on framebuffer
+  - Bitmap font (8x16 standard PC font)
+  - Glyph rendering routine
+  - Scrolling, cursor, color
+- [ ] Eventually: GPU acceleration
+  - PCI enumeration to find GPU
+  - GPU driver
+  - 2D acceleration (rectangle blit, glyph cache)
