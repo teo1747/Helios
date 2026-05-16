@@ -34,13 +34,7 @@
   - Mark proper guard pages around stack
 
 ### VMM - Direct Map Limitation
-- [ ] Currently maps only first 1GB of physical RAM to higher half
-  - Works fine on QEMU (128 MB)
-  - WILL FAIL on real hardware with >1GB RAM
-  - Allocations beyond 1GB return unreachable physical addresses
-- [ ] Solution: read total RAM from E820, map all physical RAM
-  - Use 2MB pages for direct map region (less overhead than 4KB)
-  - Reserve dedicated virtual range (e.g., 0xFFFF800000000000+)
+
 - [ ] After full direct map: also implement vmalloc-style dynamic mapping
 - [ ] Note: storage (HDD/SSD) is NOT a VMM concern - handled by drivers
 

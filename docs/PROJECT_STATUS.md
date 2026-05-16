@@ -47,7 +47,14 @@ Building a complete x86_64 operating system from absolute zero. No GRUB, no shor
 - Far jump to higher half before kernel runs
 - Custom 4KB-page VMM replaces bootloader 2MB tables
 - vmm_map, vmm_unmap, vmm_get_phys, vmm_flush_tlb working
-- Currently maps first 1GB of physical RAM (TODO: expand)
+
+### Phase 4.1a — Full Direct Map ✅
+- New virtual memory layout (Linux-style)
+- Direct map covers all usable physical RAM (from E820)
+- Uses 2 MB huge pages for direct map (efficient)
+- Kernel code stays at 0xFFFFFFFF80000000
+- Separate KV2P/KP2V macros for kernel-range conversion
+- Successfully tested on 128 MB QEMU
 
 ### Phase 5 — kprintf ✅
 - Full format specifier support: %d %u %x %X %p %s %c %% %lx
@@ -60,6 +67,11 @@ Building a complete x86_64 operating system from absolute zero. No GRUB, no shor
 - All exceptions catchable via IDT
 - Memory management functional
 - Debug output via COM1 serial
+
+## Next Steps
+### Phase 4.1b — vmm_map_mmio() helper
+- Add ability to dynamically map MMIO regions (framebuffer, PCI BARs)
+at MMIO_BASE virtual range using 4 KB pages.
 
 ## File Structure
 myos/
