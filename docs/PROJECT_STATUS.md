@@ -143,18 +143,15 @@ make clean      # remove binaries
 0x1F0000 - 0x200000  →  Kernel stack region
 
 ## Next Phase In Progress
-**Phase 6 — Framebuffer + Console Abstraction**
 
-Plan:
-3. Framebuffer driver with embedded 8x16 font
-4. Console abstraction layer (kprintf → serial + framebuffer)
-5. Later: swap embedded font for PSF file
 
 **Phase 6.2 — Bitmap Font Rendering**
-1. Embed a fixed 8x16 PC font (PSF or array)
-2. Render single glyphs at (x, y) with foreground/background colors
+1. Embed an 8x16 PC font (binary array, ~4KB)
+2. Render single glyphs at (x, y) with fg/bg colors
 3. Render strings with line wrapping and scrolling
-4. Later: load PSF from disk
+4. Maintain a cursor (col, row)
+5. Later (Phase 6.3): console abstraction + kprintf routing
+Later: swap embedded font for PSF file
 
 Just starting. Need to read https://wiki.osdev.org/VESA_Video_Modes
 
