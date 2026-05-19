@@ -10,11 +10,6 @@ static volatile uint64_t ticks = 0;
 // IRQ 0 handler called from irq_handler
 static void timer_handler(void) {
     ticks++;
-    // For testing, print a message every 100 ticks
-    if (ticks % 100 == 0) {
-        kprintf("[tick %u]\n", (unsigned int)ticks);
-
-    }
 }
 
 

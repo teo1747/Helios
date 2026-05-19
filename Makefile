@@ -24,6 +24,7 @@ KERNEL_SRC = kernel/main.c \
              kernel/drivers/font_8x16.c \
              kernel/drivers/console.c \
              kernel/drivers/timer.c \
+             kernel/drivers/keyboard.c \
              kernel/mm/pmm.c \
              kernel/cpu/idt.c \
              kernel/mm/vmm.c \

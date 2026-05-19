@@ -10,6 +10,7 @@
 #include "cpu/irq.h"
 #include "drivers/timer.h"
 #include "cpu/gdt.h"
+#include "drivers/keyboard.h"
 // VGA text mode buffer
 #define VGA_ADDR ((volatile uint16_t*) 0xB8000)
 #define VGA_COLS 80
@@ -66,6 +67,7 @@ void kernel_main(void) {
     fb_init();
     console_init();
     timer_init();
+    keyboard_init();
     
     // Now kprintf goes to both serial AND framebuffer
     kprintf("=== Helios Kernel ===\n");
@@ -86,13 +88,13 @@ void kernel_main(void) {
 
     kprintf("Enabling Interrupts...\n");
     __asm__ volatile ("sti"); // Enable interrupts - now we should start receiving timer IRQs
-    kprintf("Timer interrupts enabled.\n");
+    kprintf("Ready. Type some! \n");
 
-    // Poll the tick count from main loop instead of from handler
-    uint64_t last_print = 0;
+   
     for(;;) {
         
-        __asm__ volatile ("hlt");
+        char c = keyboard_getchar(); // Wait for a key press and get the character
+        kprintf("%c", c); 
     }
 
 

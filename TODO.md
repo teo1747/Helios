@@ -111,6 +111,58 @@ Currently hardcoded to mode 0x118 (1024x768x24bpp). Real implementation:
 - [ ] No deallocation — bump allocator only
 - [ ] No bounds check on mmio_next_virt — could overflow MMIO_BASE region
 
+
+## Phase 7 — Hardware Interrupts (deferred items)
+
+### PIC / Interrupt Controller
+- [ ] Spurious IRQ 7 / IRQ 15 detection
+  * When PIC receives a spurious interrupt (line noise, race), it sends
+    IRQ 7 (master) or IRQ 15 (slave) with ISR bit unset
+  * Should read PIC ISR register and check bit before sending EOI
+  * Without this, spurious IRQs cause the PIC to lock up
+- [ ] Migration to local APIC + IO APIC
+  * Required for SMP support
+  * Discovered via ACPI MADT (Multiple APIC Description Table)
+  * Local APIC is memory-mapped (typically 0xFEE00000)
+  * IO APIC handles external IRQs, replaces master/slave PIC
+  * Need to mask all PIC IRQs and disable PIC before enabling APIC
+- [ ] Save IRQ mask state in irq_register, restore in irq_unregister
+- [ ] irq_handler should pass register state to handler (currently no args)
+
+### PIT / Timer
+- [ ] Reprogram PIT to 1000 Hz (1ms resolution)
+  * Currently using BIOS default rate
+  * Write divisor to channel 0 via ports 0x40 and 0x43
+  * Divisor = 1193182 / target_hz
+- [ ] Migrate to TSC + HPET for precise time
+  * HPET (High Precision Event Timer) for one-shot timers
+  * TSC (Time Stamp Counter) for high-resolution time measurements
+  * Both discovered via ACPI
+- [ ] Tick handler currently does only counter++
+  * No process scheduling yet (no processes either)
+  * Eventually: preemption check, scheduler invocation
+
+### Keyboard
+- [ ] Only ASCII press events handled
+  * Add release tracking for proper modifier state
+- [ ] No modifier handling (Shift, Caps Lock, Ctrl, Alt)
+  * Need separate state machine tracking modifier press/release
+  * Shift+letter → uppercase, shift+number → symbol
+  * Caps Lock toggles, doesn't latch like Shift
+- [ ] No extended scan codes (0xE0 prefix)
+  * Arrow keys, Home/End/PgUp/PgDn, Insert/Delete, right-side Ctrl/Alt
+  * Multi-byte scan code state machine needed
+- [ ] No F1-F12 keys (scan codes 0x3B-0x44)
+- [ ] No Windows/Menu keys (0xE0 prefix)
+- [ ] No layout abstraction
+  * Only US QWERTY hardcoded
+  * Should support keymap loading (AZERTY, Dvorak, etc.)
+- [ ] No PS/2 controller initialization
+  * Currently relies on BIOS leaving controller in usable state
+  * Should explicitly configure 8042 via port 0x64 commands
+  * Disable mouse port, set scan code set, enable IRQs
+- [ ] Migration to USB HID when we have USB stack
+
 References:
 - VBE 3.0 spec (Function 15h: Display Data Channel)
 - EDID 1.4 spec (VESA E-EDID)

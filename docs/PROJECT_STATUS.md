@@ -90,6 +90,28 @@ at MMIO_BASE virtual range using 4 KB pages.
 - kprintf routes through console — appears on both serial and screen
 
 
+### Phase 7a — Hardware Interrupts (PIC + Timer + Keyboard) ✅
+- New kernel GDT (replaces bootloader GDT which lived at unmapped phys 0x7ebe)
+  * 3 entries: null, kernel code (L=1), kernel data
+  * Far return to reload CS, mov-based reload for data segments
+- 8259 PIC driver
+  * Remapped vectors: master 0x20-0x27, slave 0x28-0x2F
+  * pic_send_eoi handles slave-then-master EOI ordering
+  * pic_mask/unmask manipulate IMR per IRQ
+- IRQ dispatcher
+  * 16 IRQ stubs in isr.asm (irq0-irq15)
+  * irq_install registers stubs into IDT 32-47
+  * irq_register installs handler + auto-unmasks at PIC
+- PIT timer (IRQ 0)
+  * Default BIOS rate (~100 Hz on QEMU)
+  * Minimal handler: increments volatile tick counter
+- PS/2 keyboard (IRQ 1)
+  * Set 1 scan codes from port 0x60
+  * US QWERTY ASCII translation table
+  * Circular buffer between IRQ and main thread
+  * keyboard_getchar blocks via hlt
+
+
 ## Current State
 - Boots cleanly in QEMU (`make run`)
 - Kernel runs at 0xFFFFFFFF80100000
@@ -115,9 +137,11 @@ myos/
 │   ├── cpu/
 │   │   ├── idt.h, idt.c
 │   │   ├── isr.asm, isr.c
+│   │   ├── gdt.h, gdt.c
 │   ├── drivers/
 │   │   └── serial.h, serial.c
 |   |   └── framebuffer.h, framebuffer.c
+|   |   └── keyboard.h, keyboard.c
 │   └── mm/
 │       ├── pmm.h, pmm.c
 │       └── vmm.h, vmm.c
@@ -161,24 +185,19 @@ make clean      # remove binaries
 
 ## Next Phase In Progress
 
-**Phase 7 — Hardware Interrupts (PIC + Keyboard)**
+**Phase 7b — Defer to TODO, move to Phase 8**
 
-Currently we handle only CPU exceptions (vectors 0-31). Time to enable
-hardware interrupt sources:
+Phase 7b items (APIC, PIT programming, full keyboard) are tracked in TODO.md and revisited
+when they block something concrete.
 
-1. Configure or disable the legacy 8259 PIC
-   - Remap PIC vectors to 0x20-0x2F (avoid collision with CPU exceptions)
-   - Mask all IRQs initially, unmask as drivers come online
-2. Enable interrupts globally (sti)
-3. PS/2 keyboard driver
-   - IRQ 1 handler
-   - Scan code translation
-   - Keyboard buffer
-4. PIT (Programmable Interval Timer)
-   - IRQ 0 at 100 Hz for system tick
-   - Foundation for preemptive scheduling later
-5. Later (Phase 7.5): switch from PIC to APIC + IOAPIC for SMP-ready
+**Phase 8 — TBD. Candidates:**
+1. Heap allocator (kmalloc/kfree) — needed for almost everything else
+2. ACPI parsing — prerequisite for APIC/SMP and proper device discovery
+3. PCI enumeration — needed before any modern device driver
+4. Filesystem (FAT12/16 on the disk image) — needed for loading files
 
+Recommend Phase 8 = heap allocator. It's relatively contained,
+high-utility, and unblocks dynamic data structures elsewhere.
 
 
 
