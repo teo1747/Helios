@@ -11,6 +11,7 @@
 #include "drivers/timer.h"
 #include "cpu/gdt.h"
 #include "drivers/keyboard.h"
+#include "mm/kheap.h"
 // VGA text mode buffer
 #define VGA_ADDR ((volatile uint16_t*) 0xB8000)
 #define VGA_COLS 80
@@ -64,38 +65,66 @@ void kernel_main(void) {
     irq_install();
     pmm_init();
     vmm_init();
+    kheap_init();
     fb_init();
     console_init();
     timer_init();
     keyboard_init();
-    
-    // Now kprintf goes to both serial AND framebuffer
-    kprintf("=== Helios Kernel ===\n");
-    kprintf("Phase 6.3: Console abstraction\n");
-    kprintf("\n");
-
-    //kprintf("Signed:    %d\n", -42);
-    //kprintf("Unsigned:  %u\n", 100);
-    //kprintf("Hex:       %x\n", 0xCAFE);
-    //kprintf("HEX:       %X\n", 0xDEADBEEF);
-    //kprintf("Pointer:   %p\n", &kernel_main);
-    //kprintf("String:    %s\n", "hello world");
-    //kprintf("Char:      %c\n", 'A');
-    //kprintf("Long hex:  %lx\n", (uint64_t)0xCAFEBABEDEADBEEF);
-    //kprintf("Padded:    %08x\n", 0xABCD);
-    //kprintf("Percent:   %%\n");
-    //kprintf("\nVMM PML4 at phys: %p\n", (void *)vmm_get_kernel_pml4());
-
-    kprintf("Enabling Interrupts...\n");
-    __asm__ volatile ("sti"); // Enable interrupts - now we should start receiving timer IRQs
-    kprintf("Ready. Type some! \n");
-
    
-    for(;;) {
-        
-        char c = keyboard_getchar(); // Wait for a key press and get the character
-        kprintf("%c", c); 
+    __asm__ volatile ("sti");
+
+    // === Heap allocator test ===
+    kprintf("\n=== kmalloc test ===\n");
+
+    char *a = kmalloc(64);
+    char *b = kmalloc(128);
+    char *c = kmalloc(32);
+    kprintf("a = %p\n", a);
+    kprintf("b = %p\n", b);
+    kprintf("c = %p\n", c);
+
+    // Write to all three (must not crash, must not overlap)
+    for (int i = 0; i < 64;  i++) a[i] = 'A';
+    for (int i = 0; i < 128; i++) b[i] = 'B';
+    for (int i = 0; i < 32;  i++) c[i] = 'C';
+
+    kheap_check();
+    kheap_stats();
+
+    // Free middle one; allocate a smaller one — should reuse the slot
+    kfree(b);
+    kprintf("After kfree(b):\n");
+    kheap_stats();
+
+    char *d = kmalloc(64);
+    kprintf("d = %p (should be inside old b region)\n", d);
+    kheap_stats();
+
+    // Free everything and verify
+    kfree(a);
+    kfree(c);
+    kfree(d);
+    kprintf("After freeing all:\n");
+    kheap_stats();
+    kheap_check();
+
+    // Stress test: many small allocs
+    kprintf("\nStress: 100 small allocations\n");
+    void *ptrs[100];
+    for (int i = 0; i < 100; i++) {
+        ptrs[i] = kmalloc(16 + (i * 7) % 200);
     }
+    kheap_stats();
+    for (int i = 0; i < 100; i++) {
+        kfree(ptrs[i]);
+    }
+    kprintf("After freeing all stress:\n");
+    kheap_stats();
+    kheap_check();
+
+    kprintf("\nAll heap tests passed!\n");
+
+    for (;;) __asm__ volatile ("hlt");
 
 
 }
