@@ -1,4 +1,5 @@
 # include <stdint.h>
+#include "include/types.h"
 #include "drivers/serial.h"
 #include "../kernel/cpu/idt.h"
 #include "mm/pmm.h"
@@ -70,6 +71,12 @@ void kernel_main(void) {
     console_init();
     timer_init();
     keyboard_init();
+
+    void *p = NULL;
+    bool ready = true;
+    if (p == NULL && ready) {
+        kprintf("types.h works: NULL and bool OK\n");
+    }
    
     __asm__ volatile ("sti");
 
