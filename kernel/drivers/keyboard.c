@@ -62,9 +62,7 @@ static int buffer_pop(char *c) {
 static void keyboard_handler(void) {
     // Read scancode from keyboard data port
     uint8_t scancode = inb(KBD_DATA_PORT);
-    serial_write_string("[KBD ");
-    serial_write_hex(scancode);
-    serial_write_string("]\n");
+    
 
     // Check if key release (high bit set) - ignore releases
     if (scancode & 0x80) {
@@ -75,9 +73,7 @@ static void keyboard_handler(void) {
     char ascii = scan_to_ascii[scancode];
     if (ascii) {
         buffer_push(ascii);
-        serial_write_string("[pushed '");
-        serial_write_char(ascii);
-        serial_write_string("']\n");
+       
     }
 }
 
@@ -99,9 +95,6 @@ char keyboard_getchar(void) {
         __asm__ volatile ("hlt"); // No character available, halt until next interrupt
     }
     
-    serial_write_string("[popped '");
-    serial_write_char(c);
-    serial_write_string("']\n");
     return c;
 }
 

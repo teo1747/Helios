@@ -14,14 +14,6 @@ volatile int heap_stress_enable = 0;
 
 static void timer_handler(void) {
     ticks++;
-
-    if (heap_stress_enable) {
-        void *p = kmalloc(48);
-        if (p) {
-            *(volatile uint64_t *)p = 0xBB;
-            kfree(p);
-        }
-    }
 }
 
 

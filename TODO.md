@@ -52,6 +52,19 @@
   - Could run off the end of MMIO region without warning
   - Add MMIO_END constant and check before advancing pointer
 
+## Page-table location limit (measured)
+- [x] TESTED: boots fine at 4 GB. Page tables (~28 KB) + bitmap (160 KB)
+  fit well under physical 2 MB, so KP2V works.
+- [ ] HARD LIMIT: ~32 GB RAM. At that point the PMM bitmap alone
+  (32GB/4K/8 = ~1 MB) plus page tables pushes allocations past physical
+  2 MB, where KP2V (kernel mapping = 0-2 MB only) faults.
+  * 128 GB → 4 MB bitmap alone → guaranteed crash
+- [ ] FIX (when needed): two-phase paging bootstrap
+  * Phase 1: bootloader pre-maps first ~16 MB into kernel range
+    OR build a minimal direct map covering where page tables will live
+  * Phase 2: build full direct map using P2V (direct map access)
+  * Then switch VMM table access from KP2V to P2V
+
 ## Architecture
 
 - [ ] Single CPU only - SMP support not implemented
@@ -174,6 +187,10 @@ Currently hardcoded to mode 0x118 (1024x768x24bpp). Real implementation:
 - [ ] No allocation randomization (security hardening)
 - [ ] No quarantine/delayed-free for use-after-free detection
 - [ ] First-fit is O(n) — consider segregated free lists or best-fit
+- [x] kmalloc/kfree locking — DONE: spinlock with cli/sti save-restore
+- [ ] Spinlock has no deadlock detection / lock ordering checks
+- [ ] No reader-writer locks (all mutual exclusion is exclusive)
+- [ ] Per-CPU heap caches to reduce lock contention (multi-core, future)
 
 References:
 - VBE 3.0 spec (Function 15h: Display Data Channel)

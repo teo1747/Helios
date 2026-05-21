@@ -20,6 +20,7 @@ KERNEL_SRC = kernel/main.c \
 			 kernel/cpu/irq.c \
 			 kernel/cpu/gdt.c \
 			 kernel/cpu/spinlock.c \
+			 kernel/acpi/acpi.c \
              kernel/drivers/serial.c \
              kernel/drivers/framebuffer.c \
              kernel/drivers/font_8x16.c \
@@ -68,9 +69,27 @@ $(IMG): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_ELF)
 # Run in QEMU
 #run: $(IMG)
 #	qemu-system-x86_64 -drive format=raw,file=$(IMG) -serial stdio -no-reboot -no-shutdown
-run: $(IMG)
-	qemu-system-x86_64 -drive format=raw,file=$(IMG) -serial stdio -d int -D qemu.log
+# Run with 4 cores
+run-smp: $(IMG)
+	qemu-system-x86_64 -drive format=raw,file=$(IMG) \
+	    -serial stdio -no-reboot -no-shutdown -smp 4
 
+# Run with 4 GB RAM (tests multi-PDPT direct map)
+run-bigmem: $(IMG)
+	qemu-system-x86_64 -drive format=raw,file=$(IMG) \
+	    -serial stdio -no-reboot -no-shutdown -m 4G
+
+# Run with KVM acceleration + host CPU features (fast, needs KVM)
+run-kvm: $(IMG)
+	qemu-system-x86_64 -enable-kvm -cpu host -smp 4 \
+	    -drive format=raw,file=$(IMG) \
+	    -serial stdio -no-reboot -no-shutdown
+
+# Run with everything maxed: 4 cores, 4 GB, all CPU features
+run-max: $(IMG)
+	qemu-system-x86_64 -drive format=raw,file=$(IMG) \
+	    -serial stdio -no-reboot -no-shutdown \
+	    -smp 4 -m 4G -cpu max
 # Debug mode
 debug: $(IMG)
 	qemu-system-x86_64 -drive format=raw,file=$(IMG) \
@@ -81,4 +100,4 @@ debug: $(IMG)
 clean:
 	rm -f $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_ELF) $(IMG)
 
-.PHONY: all run debug clean
+.PHONY: all run debug clean run-smp run-bigmem run-kvm run-max

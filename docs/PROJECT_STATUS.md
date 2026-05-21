@@ -120,6 +120,12 @@ at MMIO_BASE virtual range using 4 KB pages.
 - kheap_check + kheap_stats debug tools
 - Verified with 100-alloc stress test, full coalesce on free
 
+### Phase 8b-prep — Spinlocks + IRQ-safe heap ✅
+- spinlock_t with atomic test-and-set + IRQ save/restore
+- kmalloc/kfree now safe to call from interrupt context
+- Verified under timer-IRQ vs main-loop heap contention (1.5M ops)
+- Added kernel/include/types.h (NULL, bool, size_t)
+
 
 ## Current State
 - Boots cleanly in QEMU (`make run`)

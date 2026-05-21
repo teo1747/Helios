@@ -13,6 +13,7 @@
 #include "cpu/gdt.h"
 #include "drivers/keyboard.h"
 #include "mm/kheap.h"
+#include "acpi/acpi.h"
 // VGA text mode buffer
 #define VGA_ADDR ((volatile uint16_t*) 0xB8000)
 #define VGA_COLS 80
@@ -66,6 +67,7 @@ void kernel_main(void) {
     irq_install();
     pmm_init();
     vmm_init();
+    acpi_init();
     kheap_init();
     fb_init();
     console_init();
