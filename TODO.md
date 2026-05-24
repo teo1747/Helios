@@ -217,7 +217,10 @@ Currently hardcoded to mode 0x118 (1024x768x24bpp). Real implementation:
 - [ ] No device-specific driver binding mechanism yet
 - [ ] Vendor/device ID -> human name database (currently only class names)
 
-
+- [x] BAR parsing — DONE (Phase 10b): I/O + 32/64-bit MMIO, sizing
+- [ ] BARs not yet stored in pci_device struct — only printed.
+  Should cache them so drivers can retrieve without re-reading.
+- [ ] No ECAM/MCFG, no recursive bridges, no capabilities (still pending)
 References:
 - VBE 3.0 spec (Function 15h: Display Data Channel)
 - EDID 1.4 spec (VESA E-EDID)

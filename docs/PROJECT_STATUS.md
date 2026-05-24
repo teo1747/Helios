@@ -144,6 +144,14 @@ at MMIO_BASE virtual range using 4 KB pages.
 - io.h gained outl/inl
 - Found on QEMU: 440FX bridge, PIIX3, IDE, ACPI, Bochs VGA, e1000
 
+### Phase 10b — PCI BAR Parsing ✅
+- Read/size all 6 BARs per device (I/O, 32-bit MMIO, 64-bit MMIO)
+- Size detection via write-all-1s trick with restore
+- Prefetchable detection
+- Confirmed Bochs VGA BAR0 = framebuffer 0xFD000000
+- e1000 NIC and IDE controller register regions located
+
+
 ## Current State
 - Boots cleanly in QEMU (`make run`)
 - Kernel runs at 0xFFFFFFFF80100000
