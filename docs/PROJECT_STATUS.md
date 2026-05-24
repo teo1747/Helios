@@ -127,6 +127,16 @@ at MMIO_BASE virtual range using 4 KB pages.
 - Added kernel/include/types.h (NULL, bool, size_t)
 
 
+### Phase 9b — APIC (replaces 8259 PIC) ✅
+- Local APIC: MMIO mapped, enabled via MSR + spurious vector
+- LAPIC timer: PIT-calibrated, periodic 100 Hz, vector 48, LAPIC EOI
+- IO-APIC: redirection table programming
+- Keyboard routed GSI 1 -> vector 33 -> CPU 0 via IO-APIC
+- 8259 PIC fully masked and retired
+- Interrupt path: device -> IO-APIC -> LAPIC -> CPU -> LAPIC EOI
+- All prerequisites for SMP now in place
+
+
 ## Current State
 - Boots cleanly in QEMU (`make run`)
 - Kernel runs at 0xFFFFFFFF80100000
@@ -200,19 +210,18 @@ make clean      # remove binaries
 
 ## Next Phase In Progress
 
-**Phase 7b — Defer to TODO, move to Phase 8**
+**Phase 10 — Candidates (pick one):**
+1. SMP bringup — wake the other 3 CPUs (we have their APIC IDs).
+   Send INIT-SIPI-SIPI via LAPIC, give each core a stack, bring online.
+   Big, exciting, the natural payoff of all the APIC work.
+2. PCI enumeration — scan config space, discover devices. Gateway to
+   real device drivers (disk, network).
+3. Phase 8b — slab allocator (deferred performance work).
 
-Phase 7b items (APIC, PIT programming, full keyboard) are tracked in TODO.md and revisited
-when they block something concrete.
 
-**Phase 8 — TBD. Candidates:**
-1. Heap allocator (kmalloc/kfree) — needed for almost everything else
-2. ACPI parsing — prerequisite for APIC/SMP and proper device discovery
-3. PCI enumeration — needed before any modern device driver
 4. Filesystem (FAT12/16 on the disk image) — needed for loading files
 
-Recommend Phase 8 = heap allocator. It's relatively contained,
-high-utility, and unblocks dynamic data structures elsewhere.
+
 
 
 

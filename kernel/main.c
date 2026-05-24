@@ -17,6 +17,7 @@
 #include "acpi/acpi.h"
 #include "cpu/lapic.h"
 #include "include/io.h"
+#include "drivers/pci.h"
 // VGA text mode buffer
 #define VGA_ADDR ((volatile uint16_t*) 0xB8000)
 #define VGA_COLS 80
@@ -72,6 +73,7 @@ void kernel_main(void) {
     vmm_init();
     acpi_init();
     lapic_init();
+    pci_init();
     ioapic_init();
     kheap_init();
     fb_init();

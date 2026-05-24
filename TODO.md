@@ -192,6 +192,19 @@ Currently hardcoded to mode 0x118 (1024x768x24bpp). Real implementation:
 - [ ] No reader-writer locks (all mutual exclusion is exclusive)
 - [ ] Per-CPU heap caches to reduce lock contention (multi-core, future)
 
+## Phase 9b — APIC (deferred)
+- [x] IO-APIC version register — resolved, reads 0x170020 = 24 entries correctly
+- [ ] Interrupt source overrides from MADT not applied to IO-APIC routing
+  (e.g. timer IRQ0->GSI2). Currently only keyboard (GSI1, no override).
+  When routing more IRQs, must consult overrides + polarity/trigger flags.
+- [ ] LAPIC timer not using TSC-deadline mode (more precise, modern)
+- [ ] No per-CPU LAPIC init (needed when APs come online in SMP)
+- [ ] Spurious-interrupt vector (0xFF) installed in SVR but no IDT handler
+  for it — should add a no-op handler to be safe
+- [ ] Duplicated register save/restore between irq_common and
+  irq_commom_lapic in isr.asm — refactor to share
+
+
 References:
 - VBE 3.0 spec (Function 15h: Display Data Channel)
 - EDID 1.4 spec (VESA E-EDID)

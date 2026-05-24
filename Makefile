@@ -30,6 +30,7 @@ KERNEL_SRC = kernel/main.c \
              kernel/drivers/timer.c \
              kernel/drivers/keyboard.c \
 			 kernel/drivers/pit.c \
+			 kernel/drivers/pci.c \
              kernel/mm/pmm.c \
              kernel/cpu/idt.c \
              kernel/mm/vmm.c \
