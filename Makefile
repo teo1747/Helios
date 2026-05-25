@@ -64,7 +64,11 @@ $(KERNEL_ELF): $(KERNEL_SRC) $(ISR_OBJ) $(LINKER)
 $(IMG): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_ELF)
 	cat $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_ELF) > $(IMG)
 	truncate -s 1M $(IMG)
-
+	@kernel_sectors=$$(( ($$(stat -c%s $(KERNEL_ELF)) + 511) / 512 )); \
+	echo "Kernel is $$kernel_sectors sectors; stage2 loads 512"; \
+	if [ $$kernel_sectors -gt 512 ]; then \
+	    echo "*** WARNING: kernel exceeds stage2 load size! Bump cx in stage2.asm ***"; \
+	fi
 # Create the 64 MB data disk only if it doesn't already exist
 $(DISK):
 	dd if=/dev/zero of=$(DISK) bs=1M count=64

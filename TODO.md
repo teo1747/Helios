@@ -13,6 +13,16 @@
 - [ ] Hardcoded LBA start (sector 9) - works because we control the disk layout
   - Real OS would use filesystem to find kernel
 
+
+- [~] Loads fixed 512 sectors for kernel (was 90, outgrew it once)
+  - LESSON: when kernel exceeded 90 sectors, the tail wasn't loaded;
+    symptoms were truncated MMIO addrs + garbled E820 (looked like a
+    pointer bug, was actually missing code/data in RAM)
+  - Makefile now warns if kernel ELF > 512 sectors
+  - PROPER FIX (bootloader v2): read ELF header in real mode, parse
+    PT_LOAD segments (max p_offset+p_filesz), load exact sectors.
+    Do this alongside UEFI rework.
+
 ### General
 - [ ] No support for booting from USB/CD - hard disk only
 - [ ] No error recovery on failed disk reads (just halts)
