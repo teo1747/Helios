@@ -77,27 +77,35 @@ void kernel_main(void) {
     lapic_init();
     pci_init();
     ata_init();
-     // Read sector 0 (the boot sector) and verify
-    uint8_t sector[512];
-    if (ata_read_sectors(0, 1, sector) == 0) {
-        kprintf("Sector 0 read OK\n");
-        // Boot signature is at offset 510-511: 0x55 0xAA
-        kprintf("Boot signature: %x %x (expect 55 AA)\n",
-                (unsigned int)sector[510], (unsigned int)sector[511]);
 
-        // Dump first 16 bytes
-        kprintf("First 16 bytes: ");
-        for (int i = 0; i < 16; i++) {
-            kprintf("%x ", (unsigned int)sector[i]);
+    // Read boot sector from drive 0 (boot disk)
+    uint8_t sector[512];
+    if (ata_read_sectors(0, 0, 1, sector) == 0) {
+        kprintf("Drive 0 sector 0: sig %x %x\n",
+                (unsigned int)sector[510], (unsigned int)sector[511]);
+    }
+
+    // Test write+read on the data disk (drive 1) if present
+    if (ata_drive_count() > 1) {
+        uint8_t wbuf[512], rbuf[512];
+        for (int i = 0; i < 512; i++) wbuf[i] = (uint8_t)(i & 0xFF);
+
+        if (ata_write_sectors(1, 100, 1, wbuf) == 0 &&
+            ata_read_sectors(1, 100, 1, rbuf) == 0) {
+            // Verify
+            bool match = true;
+            for (int i = 0; i < 512; i++) {
+                if (wbuf[i] != rbuf[i]) { match = false; break; }
+            }
+            kprintf("Data disk write/read test: %s\n", match ? "PASS" : "FAIL");
         }
-        kprintf("\n");
-    } else {
-        kprintf("Sector 0 read FAILED\n");
     }
     ioapic_init();
     kheap_init();
     fb_init();
     console_init();
+    fb_clear(0, 0, 64);   // dark blue screen — if you see this, framebuffer works
+    kprintf("Helios — framebuffer alive\n");
     //timer_init();
    
 

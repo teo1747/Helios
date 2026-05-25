@@ -1,0 +1,5 @@
+*.bin
+*.o
+*.elf
+*.img
+qemu.log

@@ -28,7 +28,7 @@ start:
     mov dword [dap + 8], 9          ; initial LBA
     mov dword [dap + 12], 0
 
-    mov cx, 90
+    mov cx, 512
 
 .read_loop:
     mov si, dap

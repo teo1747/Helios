@@ -20,6 +20,7 @@ static const fb_info_t *fb_info = 0;
 
 
 void console_init(void) {
+    serial_write_string("\n=== Console init ===\n");
     fb_info = fb_get_info();
 
     cols = fb_info->width / FONT_WIDTH;  // 128
