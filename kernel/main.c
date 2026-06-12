@@ -109,6 +109,15 @@ void kernel_main(void) {
     } else {
         kprintf("AHCI IDENTIFY FAILED\n");
     }
+    static uint8_t ahci_rbuf[512] __attribute__((aligned(4)));
+    kprintf("Testing AHCI read (sector 5)...\n");
+    if (ahci_read_sectors(0, 5, 1, ahci_rbuf)) {
+        ahci_rbuf[32] = '\0';   // terminate for printing
+        kprintf("AHCI sector 5 says: '%s'\n", (char *)ahci_rbuf);
+    } else {
+        kprintf("AHCI read FAILED\n");
+    }
+
     
     kheap_init();
     fb_init();

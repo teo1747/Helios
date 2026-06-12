@@ -144,6 +144,7 @@ struct ahci_port_mem {
 // send IDENTIFY DEVICE to a port and fill a port and fill a 512-byte buffer with the IDENTIFY DEVICE data. Returns true if successful, false otherwise.
 bool ahci_identify_device(uint8_t port_num, void *buffer);
 
+bool ahci_read_sectors(uint8_t port_num, uint64_t lba, uint16_t count, void *buffer);
 
 // Initialize AHCI controller: Discover, map ABAR, enumerate ports
 void ahci_init(void);
