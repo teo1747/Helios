@@ -1,6 +1,7 @@
 #include "ahci.h"
 #include "pci.h"
 #include "../mm/vmm.h"
+#include "../mm/pmm.h"
 #include "../include/kprintf.h"
 #include "serial.h"
 #include <stdint.h>
@@ -11,6 +12,9 @@ static uint32_t ahci_cap = 0;
 static uint32_t ahci_pi = 0;
 static struct ahci_port_info ports[AHCI_MAX_PORTS];
 static uint32_t port_count = 0;
+
+// Per-port memory : Command list + received FIS + Command tables. Each port has its own memory area, which is page-aligned (4096 bytes). The command list is 1024 bytes, the received FIS area is 256 bytes, and the command tables are 12288 bytes (32 command tables * 384 bytes each). Total per-port memory = 1024 + 256 + 12288 = 13568 bytes. We round up to the next page boundary (16384 bytes) for alignment.
+static struct ahci_port_mem port_mem[AHCI_MAX_PORTS] __attribute__((aligned(4096)));  // Per-port memory (BSS, page-aligned)
 
 
 // 32-bit register access (all AHCI registers are 32-bit)
@@ -30,6 +34,195 @@ static inline uint32_t ahci_port_read(uint32_t port, uint32_t offset) {
 static inline void ahci_port_write(uint32_t port, uint32_t offset, uint32_t value) {
     ahci_write(0x100 + port * 0x80 + offset, value);
 }
+
+
+
+// Helper functions for AHCI register access
+
+
+// Wait for a port's command engine to be idle (i.e. wait for PxCMD.CR and PxCMD.FR to be cleared). Returns true if the port is idle, false if it times out after 1 second.
+static bool wait_for_port_idle(uint8_t port) {
+    for (int i = 0; i < 100000; i++) {
+        uint32_t cmd = ahci_port_read(port, AHCI_PORT_CMD);
+        if (!(cmd & (1U << 15)) && !(cmd & (1U << 14))) {
+            return true; // Port is idle
+        }
+        
+    }
+    return false; // Timed out
+}
+
+// Stop a port's command engine by clearing PxCMD.ST and waiting for the port to be idle. Returns true if successful, false if it times out.
+static bool stop_port(uint8_t port) {
+    // Clear ST (Start) bit
+    uint32_t cmd = ahci_port_read(port, AHCI_PORT_CMD);
+    cmd &= ~((1U << 0) | (1U << 4));   // clear ST and FRE
+    ahci_port_write(port, AHCI_PORT_CMD, cmd);
+    return wait_for_port_idle(port);
+}
+
+// Start a port's command engine by setting PxCMD.ST and waiting for the port to be ready
+static void start_port(uint8_t port) {
+    // Wait for CR to be cleared (command list processing idle)
+    while (ahci_port_read(port, AHCI_PORT_CMD) & (1U << 15)) {
+        // Wait
+    }
+    // Set ST (Start) bit
+    uint32_t cmd = ahci_port_read(port, AHCI_PORT_CMD);
+    cmd |= (1U << 4); // FRE (FIS receive enable)
+    ahci_port_write(port, AHCI_PORT_CMD, cmd); 
+    cmd |= (1U << 0); // ST (Start)
+    ahci_port_write(port, AHCI_PORT_CMD, cmd);
+}
+
+
+// Initialize a port memory: program the command list base address (PxCLB), the FIS receive area base address (PxFB), and the command table base address (PxCTBA) for each command header. We use the static `port_mem` array for this, which is page-aligned and has enough space for all ports. We also link each command header to its corresponding command table by setting the CTBA in the command header. This sets up the memory structures needed for AHCI command processing.
+// of the static buffer, link command headers to their command tables.
+static void port_setup_memory(uint8_t port) {
+    struct ahci_port_mem *mem = &port_mem[port];
+
+    // Program PxCLB (Command List Base Address)
+    // Zero the entire block (BSS is zero-initialized, but we want to be sure)
+    uint8_t *ptr = (uint8_t *)mem;
+    for (size_t i = 0; i < sizeof(struct ahci_port_mem); i++) {
+        ptr[i] = 0;
+    }
+
+    // Stop the port before programming memory
+    stop_port(port);
+
+    // Program PxCLB (Command List Base Address) AND PxFB (FIS Base Address)
+    uint64_t clb_addr = KV2P(&mem->cmd_list[0]);
+    uint64_t fb_addr = KV2P(&mem->recv_fis[0]);
+
+    ahci_port_write(port, AHCI_PORT_CLB, (uint32_t)(clb_addr & 0xFFFFFFFF)); // CLB lower 32 bits
+    ahci_port_write(port, AHCI_PORT_CLBU, (uint32_t)(clb_addr >> 32)); // CLB upper 32 bits
+    ahci_port_write(port, AHCI_PORT_FB, (uint32_t)(fb_addr & 0xFFFFFFFF)); // FB lower 32 bits
+    ahci_port_write(port, AHCI_PORT_FBU, (uint32_t)(fb_addr >> 32)); // FB upper 32 bits    
+
+    // For each command header, program the CTBA (Command Table Base Address) to point to the corresponding command table
+    for (int i = 0; i < 32; i++) {
+        uint64_t ctba_addr = KV2P(&mem->cmd_tables[i]);
+        mem->cmd_list[i].ctba = (uint32_t)(ctba_addr & 0xFFFFFFFF); // CTBA lower 32 bits
+        mem->cmd_list[i].ctbau = (uint32_t)(ctba_addr >> 32); // CTBA upper 32 bits
+    }
+
+    // Clear pending interrupts by writing 1s to PxSERR and PxIS
+    ahci_port_write(port, AHCI_PORT_SERR, 0xFFFFFFFF);
+    ahci_port_write(port, AHCI_PORT_IS, 0xFFFFFFFF);
+
+    // Start the port
+    start_port(port);
+
+}
+
+
+// Find a free command slot for a port. Returns the slot number (0-31) if a slot is available, or -1 if no slots are free.
+static int find_free_command_slot(uint8_t port) {
+    uint32_t slots_in_use = ahci_port_read(port, AHCI_PORT_SACT) | ahci_port_read(port, AHCI_PORT_CI);
+    for (int i = 0; i < 32; i++) {
+        if (!(slots_in_use & (1 << i))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool ahci_identify_device(uint8_t port_num, void *buffer) {
+    // This function will send an IDENTIFY DEVICE command to the specified port and fill the provided buffer with the 512-byte IDENTIFY DEVICE data. It returns true if successful, false otherwise.
+    if (port_num >= port_count) {
+        return false;
+    }
+
+    // 1. Find a free command slot
+    int slot = find_free_command_slot(port_num);
+    if (slot == -1) {
+        kprintf("AHCI: No free command slots on port %u\n", (unsigned int)port_num);
+        return false;
+    }
+
+    // 2. Set up the command header for the IDENTIFY DEVICE command
+    struct ahci_cmd_header *cmd_header = &port_mem[port_num].cmd_list[slot];
+    cmd_header->flags = (5 << 0) | (0 << 5); // CFL=5 (20 bytes), write=0 (read), prefetchable=0
+    cmd_header->prdtl = 1; // One PRDT entry (we only need one for the 512-byte buffer)
+    cmd_header->prdbc = 0; // No bytes transferred yet (this will be updated by the controller)
+
+    // 3. Set up the command table for the IDENTIFY DEVICE command
+    struct ahci_cmd_table *cmd_table = &port_mem[port_num].cmd_tables[slot];
+    // Zero the command table (especially the CFIS and PRDT entries)
+    for (int i = 0; i < sizeof(struct ahci_cmd_table) / sizeof(uint32_t); i++) {
+        ((uint32_t *)cmd_table)[i] = 0;
+    }
+
+    for (int i = 0; i < 16; i++) {
+        cmd_table->acmd[i] = 0;
+    }
+
+    cmd_table->prdt[0].dba = 0;
+    cmd_table->prdt[0].dbau = 0;
+    cmd_table->prdt[0].dbc_i = 0;
+    cmd_table->reserved[0] = 0;
+
+    // Fill the CFIS (Command FIS) for the IDENTIFY DEVICE command
+
+    struct fis_reg_h2d *cfis = &cmd_table->cfis;
+    cfis->fis_type = AHCI_FIS_TYPE_REG_H2D; // FIS_TYPE_REG_H2D
+    cfis->pmport_c = (1 << 7); // Command FIS C bit set to 1 (command)
+    cfis->command = 0xEC; // ATA IDENTIFY DEVICE command
+    cfis->device = 0; // Device register (0 for master) 
+    cfis->count = 0; // Count register (not used for IDENTIFY DEVICE)
+    // LBA registers are not used for IDENTIFY DEVICE, so we can leave them as 0
+
+    // Set up the PRDT entry to point to our buffer
+    uint64_t buffer_phys = KV2P(buffer);
+    if (buffer_phys >> 32) {
+        kprintf("AHCI: Buffer above 4GB unsupported here\n");
+        return false;
+    }
+    cmd_table->prdt[0].dba = (uint32_t)(buffer_phys & 0xFFFFFFFF); // Data base address lower 32 bits
+    cmd_table->prdt[0].dbau = (uint32_t)(buffer_phys >> 32); // Data base address upper 32 bits
+    cmd_table->prdt[0].dbc_i = (512 - 1) | (1U << 31); // Byte count  - 1 (512 bytes) and interrupt on completion
+
+    // 4. Wait for the port to be idle before issuing the command (TFD not BSY/DRQ)
+    for (int i = 0; i < 100000; i++) {
+        uint32_t tfd = ahci_port_read(port_num, AHCI_PORT_TFD);
+        if (!(tfd & (1U << 7)) && !(tfd & (1U << 3))) { // BSY bit 7 =0 and DRQ bit 3 =0
+            break;
+        }
+        if (i == 99999) {
+            kprintf("AHCI: Port %u busy, cannot send IDENTIFY DEVICE\n", (unsigned int)port_num);
+            return false;
+        }
+    }
+
+    // 5. Issue the command by setting the corresponding bit in PxCI
+    ahci_port_write(port_num, AHCI_PORT_CI, (1U << slot));
+
+    // 6. Wait for the command to complete (check PxCI and PxIS)
+    for (int i = 0; i < 100000; i++) {
+        uint32_t ci = ahci_port_read(port_num, AHCI_PORT_CI);
+        if (!(ci & (1U << slot))) {
+            // Command completed
+            uint32_t tfd = ahci_port_read(port_num, AHCI_PORT_TFD);
+            if (tfd & 0x01) { // Check for Task File Error
+                kprintf("AHCI: IDENTIFY error ,TFD=%x\n", (unsigned int)tfd);
+                return false;
+            }
+            return true; // Success
+        }
+        // also check for errors in PxIS
+        uint32_t is = ahci_port_read(port_num, AHCI_PORT_IS);
+
+        if (is & (1U << 30)) { // Check for Task File Error
+            kprintf("AHCI: TFE (Task File Error) during IDENTIFY, PxIS=%x\n", (unsigned int)is);
+            return false;
+        }
+    }
+
+    kprintf("AHCI: IDENTIFY command timed out, CI=%x\n", (unsigned int)ahci_port_read(port_num, AHCI_PORT_CI));
+    return false; // Timed out
+}
+
 
 
 // Find the AHCI base address in the PCI configuration space
@@ -143,6 +336,14 @@ void ahci_init(void) {
 
     }
     kprintf("AHCI: %u port(s) implemented\n", (unsigned int)port_count);
+
+    // 8. Set up memory for each port
+    for (uint32_t i = 0; i < port_count; i++) {
+        if (ports[i].present) {
+            port_setup_memory(ports[i].port_num);
+            kprintf("AHCI: Port %u memory set up\n", (unsigned int)ports[i].port_num);
+        }
+    }
 }
 
 
